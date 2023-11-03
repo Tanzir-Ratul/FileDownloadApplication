@@ -14,6 +14,7 @@ import android.os.Message
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -38,6 +39,8 @@ class MainActivity : AppCompatActivity() {
     private var downloadId: Long = -1
     private var stopUpdate: Boolean = false
     private  var timer: Timer? = null
+    private var backPressedTime: Long = 0
+
     // private lateinit var downloadBroadcastReceiver: DownloadBroadcastReceiver
 
     private val downloadManager: DownloadManager by lazy {
@@ -125,7 +128,6 @@ class MainActivity : AppCompatActivity() {
                 val downloadedBytes = cursor.getLong(downloadedBytesColumnIndex)
                 val totalBytes = cursor.getLong(totalBytesColumnIndex)
                 val progress = ((downloadedBytes * 100) / totalBytes).toInt()
-                // Update the ViewModel with the progress
                 Timber.d("progressInBroadcast $progress")
                 if (progress == 100) {
                     Log.d("stopUpdateInP", "$stopUpdate")
@@ -150,9 +152,18 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
         }
 
-
+        onBackPressedDispatcher.addCallback(
+            this,
+            onBackPressedCallback
+        )
     }
-
+    private val onBackPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (shouldNavigateBack()) {
+                finish()
+            }
+        }
+    }
     private fun setObservers() {
         downloadViewModel.apply {
             isDownloadFile.observe(this@MainActivity) {
@@ -177,7 +188,17 @@ class MainActivity : AppCompatActivity() {
              downloadViewModel.progress.postValue(progress)
          }*/
     }
+    private fun shouldNavigateBack(): Boolean {
+        val currentTime = System.currentTimeMillis()
 
+        if (currentTime - backPressedTime < 2000) { //  time interval for exit
+            return true
+        } else {
+            backPressedTime = currentTime
+            Toast.makeText(this, "Press back again to exit", Toast.LENGTH_LONG).show()
+        }
+        return false
+    }
     private fun isDownloadComplete(): Boolean {
         val query = DownloadManager.Query()
         query.setFilterById(downloadId)
