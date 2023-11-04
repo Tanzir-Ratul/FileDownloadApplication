@@ -8,17 +8,20 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.provider.Settings
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.example.filedownloadapplication.databinding.ActivityMainBinding
 import com.example.filedownloadapplication.ui.broadcastReceiver.DownloadBroadcastReceiver
 import com.example.filedownloadapplication.ui.repository.DownloadRepository
@@ -28,7 +31,11 @@ import com.example.filedownloadapplication.utils.appSettingOpen
 import com.example.filedownloadapplication.utils.isConnected
 import com.example.filedownloadapplication.utils.warningPermissionDialog
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.io.File
 import java.util.Timer
 import java.util.TimerTask
 
@@ -38,14 +45,13 @@ class MainActivity : AppCompatActivity() {
     private val requestCodePermission = 1
     private var downloadId: Long = -1
     private var stopUpdate: Boolean = false
-    private  var timer: Timer? = null
+    private var timer: Timer? = null
     private var backPressedTime: Long = 0
 
-    // private lateinit var downloadBroadcastReceiver: DownloadBroadcastReceiver
+    private val downloadBroadcastReceiver = DownloadBroadcastReceiver()
 
-    private val downloadManager: DownloadManager by lazy {
-        getSystemService(DOWNLOAD_SERVICE) as DownloadManager
-    }
+    private var downloadManager: DownloadManager? = null
+
     private val updateProgressHandler = UpdateProgressHandler(Looper.getMainLooper())
 
     private val downloadViewModel: DownloadViewModel by lazy {
@@ -79,17 +85,8 @@ class MainActivity : AppCompatActivity() {
         initObjects()
         setObservers()
         onClick()
-        /* val filter = IntentFilter()
-         filter.addAction(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-         filter.addAction(DownloadManager.ACTION_NOTIFICATION_CLICKED)
+        registerReceiver(downloadBroadcastReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
 
-         ContextCompat.registerReceiver(
-             this,
-             downloadBroadcastReceiver,
-             filter,
-             ContextCompat.RECEIVER_NOT_EXPORTED
-         )*/
-        // updateProgressBar()
 
     }
 
@@ -100,8 +97,9 @@ class MainActivity : AppCompatActivity() {
                 Log.d("stopUpdate", "$stopUpdate")
                 if (!stopUpdate) {
                     Timber.d("isDownloadComplete $timer")
-                    queryDownloadProgress()
+                    //queryDownloadProgress()
                 } else {
+                    binding.downloadBtn.visibility = View.VISIBLE
                     timer?.cancel()
                     timer = null
                 }
@@ -111,35 +109,53 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    private fun queryDownloadProgress() {
-        val query = DownloadManager.Query()
-        Log.d("downloadId", "$downloadId")
-        query.setFilterById(downloadId)
-        val cursor = downloadManager.query(query)
-
-        if (cursor != null && cursor.moveToFirst()) {
-            val downloadedBytesColumnIndex =
-                cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-            val totalBytesColumnIndex =
-                cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-
-            // Check if the columns exist
-            if (downloadedBytesColumnIndex != -1 && totalBytesColumnIndex != -1) {
-                val downloadedBytes = cursor.getLong(downloadedBytesColumnIndex)
-                val totalBytes = cursor.getLong(totalBytesColumnIndex)
-                val progress = ((downloadedBytes * 100) / totalBytes).toInt()
-                Timber.d("progressInBroadcast $progress")
-                if (progress == 100) {
-                    Log.d("stopUpdateInP", "$stopUpdate")
-                    stopUpdate = true
+    private suspend fun queryDownloadProgress(downloadId:Long) {
+        val cursor = downloadManager?.query(DownloadManager.Query().setFilterById(downloadId))
+        if (cursor?.moveToFirst() == true) {
+            when (cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS) ?: 0)) {
+                DownloadManager.STATUS_FAILED -> {
+                    withContext(Dispatchers.Main) {
+                        binding.downloadBtn.visibility = View.VISIBLE
+                        binding.progressBar.progress = 0
+                        binding.progressBarValueTV.text = "0%"
+                        Toast.makeText(this@MainActivity, "Download Failed", Toast.LENGTH_SHORT)
+                            .show()
+                    }
                 }
-                updateProgressHandler.sendMessage(updateProgressHandler.obtainMessage(progress))
 
+                DownloadManager.STATUS_PAUSED -> {}
+                DownloadManager.STATUS_PENDING -> {}
+                DownloadManager.STATUS_RUNNING -> {
+                    val totalSize = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES) ?: 0)
+                    if (totalSize >= 0) {
+                        val downloaded = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR) ?: 0)
+                        val progress = (downloaded * 100L / totalSize).toInt()
+                        withContext(Dispatchers.Main) {
+                           binding.progressBar.progress = progress
+                            binding.progressBarValueTV.text = "$progress%"
+                        }
+                    }
+                }
+
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                   Toast.makeText(this@MainActivity, "Download Completed", Toast.LENGTH_SHORT)
+                        .show()
+                    withContext(Dispatchers.Main) {
+                        binding.downloadBtn.visibility = View.VISIBLE
+                        binding.progressBar.progress = 100
+                        binding.progressBarValueTV.text = "100%"
+                    }
+
+                }
             }
 
-        }
 
-        cursor.close()
+            // Check if the columns exist
+
+
+        }
+        cursor?.close()
+
     }
 
     private fun initObjects() {
@@ -151,12 +167,14 @@ class MainActivity : AppCompatActivity() {
         ).setAction("Setting") {
             startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
         }
+        downloadManager = getSystemService(DownloadManager::class.java) as DownloadManager
 
         onBackPressedDispatcher.addCallback(
             this,
             onBackPressedCallback
         )
     }
+
     private val onBackPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
             if (shouldNavigateBack()) {
@@ -164,6 +182,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
     private fun setObservers() {
         downloadViewModel.apply {
             isDownloadFile.observe(this@MainActivity) {
@@ -188,6 +207,7 @@ class MainActivity : AppCompatActivity() {
              downloadViewModel.progress.postValue(progress)
          }*/
     }
+
     private fun shouldNavigateBack(): Boolean {
         val currentTime = System.currentTimeMillis()
 
@@ -199,17 +219,18 @@ class MainActivity : AppCompatActivity() {
         }
         return false
     }
-    private fun isDownloadComplete(): Boolean {
+
+  /*  private fun isDownloadComplete(): Boolean {
         val query = DownloadManager.Query()
         query.setFilterById(downloadId)
-        val cursor = downloadManager.query(query)
+        val cursor = downloadManager?.query(query)
         if (cursor != null && cursor.moveToFirst()) {
             val columStatus = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
             val status = if (columStatus != -1) cursor.getInt(columStatus) else -1
             return status == DownloadManager.STATUS_SUCCESSFUL
         }
         return false
-    }
+    }*/
 
     private fun doOperation() {
         //Toast.makeText(this, "All Permission Granted", Toast.LENGTH_SHORT).show()
@@ -219,10 +240,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             stopUpdate = false
-            updateProgressBar()
+            downloadManager?.let { downloadId = it.enqueue(downloadViewModel.downloadFile())}
+            binding.downloadBtn.visibility = View.GONE
+
+            lifecycleScope.launch(Dispatchers.IO) {
+                queryDownloadProgress(downloadId)
+            }
 
 
-            downloadViewModel.downloadFile()?.let { downloadId = downloadManager.enqueue(it) }
             Log.d("downloadIdIN", "$downloadId")
 
         } else {
@@ -233,7 +258,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // unregisterReceiver(downloadBroadcastReceiver)
+        unregisterReceiver(downloadBroadcastReceiver)
     }
 
     // --------------------------below all permission code-------------------------------------------

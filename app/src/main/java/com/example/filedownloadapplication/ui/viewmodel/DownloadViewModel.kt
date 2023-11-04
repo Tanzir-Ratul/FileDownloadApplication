@@ -18,6 +18,9 @@ class DownloadViewModel(private val repository: DownloadRepository) : ViewModel(
     val isDownloadFile:LiveData<String?> = _isDownloadFile
     val progress: MutableLiveData<Int> = MutableLiveData()
 
+    fun getUrl():String{
+        return repository.getUrl()
+    }
     fun downloadFile(): DownloadManager.Request?{
         try{
             val folder =
