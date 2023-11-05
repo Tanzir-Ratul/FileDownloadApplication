@@ -6,10 +6,11 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+
+var downloadUrl = "https://file-examples.com/storage/fe1734aff46541d35a76822/2017/04/file_example_MP4_1920_18MG.mp4"
 
 fun appSettingOpen(mContext: Context) {
 

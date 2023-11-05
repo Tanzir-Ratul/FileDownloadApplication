@@ -11,8 +11,20 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:id="@+id/rootView"
+        android:padding="5dp"
         tools:context=".MainActivity">
 
+        <EditText
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/linkPasteET"
+            app:layout_constraintEnd_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            android:hint="Paste here your link here (optional)"
+            app:layout_constraintBottom_toTopOf="@+id/progressbarCL"
+            />
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -21,7 +33,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            android:visibility="visible"
+            android:visibility="gone"
             tools:visibility="visible">
 
             <ProgressBar

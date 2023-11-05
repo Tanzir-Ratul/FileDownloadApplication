@@ -28,6 +28,7 @@ import com.example.filedownloadapplication.ui.repository.DownloadRepository
 import com.example.filedownloadapplication.ui.viewmodel.DownloadViewModel
 import com.example.filedownloadapplication.ui.viewmodel.DownloadViewModelFactory
 import com.example.filedownloadapplication.utils.appSettingOpen
+import com.example.filedownloadapplication.utils.downloadUrl
 import com.example.filedownloadapplication.utils.isConnected
 import com.example.filedownloadapplication.utils.warningPermissionDialog
 import com.google.android.material.snackbar.Snackbar
@@ -79,18 +80,18 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        // downloadBroadcastReceiver = DownloadBroadcastReceiver() //register broadcast receiver
 
+        setContentView(binding.root)
         initObjects()
         setObservers()
         onClick()
+
         registerReceiver(downloadBroadcastReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
 
 
     }
 
-    private fun updateProgressBar() {
+   /* private fun updateProgressBar() {
         timer = Timer()
         val downloadObserver = object : TimerTask() {
             override fun run() {
@@ -107,55 +108,68 @@ class MainActivity : AppCompatActivity() {
         }
         timer?.schedule(downloadObserver, 0, 1000) // Update every second
 
-    }
+    }*/
 
     private suspend fun queryDownloadProgress(downloadId:Long) {
-        val cursor = downloadManager?.query(DownloadManager.Query().setFilterById(downloadId))
-        if (cursor?.moveToFirst() == true) {
-            when (cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS) ?: 0)) {
-                DownloadManager.STATUS_FAILED -> {
-                    withContext(Dispatchers.Main) {
-                        binding.downloadBtn.visibility = View.VISIBLE
-                        binding.progressBar.progress = 0
-                        binding.progressBarValueTV.text = "0%"
-                        Toast.makeText(this@MainActivity, "Download Failed", Toast.LENGTH_SHORT)
-                            .show()
-                    }
-                }
+        try{
+            val cursor = downloadManager?.query(DownloadManager.Query().setFilterById(downloadId))
+            if (cursor?.moveToFirst() == true) {
+                when (cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS) ?: 0)) {
 
-                DownloadManager.STATUS_PAUSED -> {}
-                DownloadManager.STATUS_PENDING -> {}
-                DownloadManager.STATUS_RUNNING -> {
-                    val totalSize = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES) ?: 0)
-                    if (totalSize >= 0) {
-                        val downloaded = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR) ?: 0)
-                        val progress = (downloaded * 100L / totalSize).toInt()
+                    DownloadManager.STATUS_FAILED -> {
                         withContext(Dispatchers.Main) {
-                           binding.progressBar.progress = progress
-                            binding.progressBarValueTV.text = "$progress%"
+                           // binding.downloadBtn.visibility = View.VISIBLE
+                            binding.progressBar.progress = 0
+                            binding.progressBarValueTV.text = "0%"
+                            Toast.makeText(this@MainActivity, "Download Failed", Toast.LENGTH_SHORT)
+                                .show()
                         }
                     }
-                }
 
-                DownloadManager.STATUS_SUCCESSFUL -> {
-                   Toast.makeText(this@MainActivity, "Download Completed", Toast.LENGTH_SHORT)
-                        .show()
-                    withContext(Dispatchers.Main) {
-                        binding.downloadBtn.visibility = View.VISIBLE
-                        binding.progressBar.progress = 100
-                        binding.progressBarValueTV.text = "100%"
+                    DownloadManager.STATUS_PAUSED -> {
+                        Toast.makeText(this@MainActivity, "Download Paused", Toast.LENGTH_SHORT)
+                            .show()
                     }
 
+                    DownloadManager.STATUS_PENDING -> {
+                        Toast.makeText(this@MainActivity, "Download Pending", Toast.LENGTH_SHORT)
+                            .show()
+                    }
+
+                    DownloadManager.STATUS_RUNNING -> {
+                        val totalSize = cursor.getLong(
+                            cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES) ?: 0
+                        )
+                        val downloaded = cursor.getLong(
+                            cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                                ?: 0
+                        )
+
+                        if (totalSize >= 0) {
+                            val progress = (downloaded * 100L / totalSize).toInt()
+                            withContext(Dispatchers.Main) {
+                                binding.progressBar.progress = progress
+                                binding.progressBarValueTV.text = "$progress%"
+                            }
+                        }
+                    }
+
+                    DownloadManager.STATUS_SUCCESSFUL -> {
+                        Toast.makeText(this@MainActivity, "Download Completed", Toast.LENGTH_SHORT)
+                            .show()
+                        withContext(Dispatchers.Main) {
+                           // binding.downloadBtn.visibility = View.VISIBLE
+                            binding.progressBar.progress = 100
+                            binding.progressBarValueTV.text = "100%"
+                        }
+
+                    }
                 }
             }
-
-
-            // Check if the columns exist
-
-
+            cursor?.close()
+        }catch (e:Exception){
+            e.printStackTrace()
         }
-        cursor?.close()
-
     }
 
     private fun initObjects() {
@@ -240,14 +254,18 @@ class MainActivity : AppCompatActivity() {
             }
 
             stopUpdate = false
-            downloadManager?.let { downloadId = it.enqueue(downloadViewModel.downloadFile())}
-            binding.downloadBtn.visibility = View.GONE
+            downloadUrl = binding.linkPasteET.text.toString().ifEmpty { downloadUrl }
+
+            try{
+                downloadManager?.let { downloadId = it.enqueue(downloadViewModel.downloadFile()) }
+            }catch (e:Exception){
+              Toast.makeText(this,"${e.localizedMessage}",Toast.LENGTH_SHORT).show()
+            }
+            // binding.downloadBtn.visibility = View.GONE
 
             lifecycleScope.launch(Dispatchers.IO) {
                 queryDownloadProgress(downloadId)
             }
-
-
             Log.d("downloadIdIN", "$downloadId")
 
         } else {
